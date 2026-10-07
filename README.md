@@ -1,124 +1,94 @@
 # FastInst Segmentation
 
-FastInst Segmentation is a portfolio-ready computer vision repository for real-time instance segmentation on COCO-style datasets. It packages a Detectron2-based FastInst workflow with training, evaluation, demo, dataset preparation, and model-analysis utilities.
+Real-time instance segmentation: every object in an image, with its own pixel mask, fast enough to run live.
 
-The core model is based on the FastInst architecture from the paper [FastInst: A Simple Query-Based Model for Real-Time Instance Segmentation](https://arxiv.org/abs/2303.08594). This repository focuses on making that workflow easy to run, inspect, and extend for practical experimentation.
+FastInst is a query-based model built on Detectron2. This repository is the full workflow around it: configs, training, COCO evaluation, dataset preparation, cost analysis, and a demo for images, video, and webcam.
 
-<p align="center"><img width="100%" src="figures/fastinst.png" /></p>
+<p align="center">
+  <img src="figures/fastinst.png" alt="FastInst architecture: backbone features, pixel decoder, and query decoder producing per-object masks" width="100%" />
+</p>
 
-## Problem Statement
+<p align="center">
+  <img src="figures/trade-off.png" alt="Speed versus accuracy: FastInst sits on the real-time side of the COCO instance segmentation tradeoff" width="80%" />
+</p>
 
-Instance segmentation systems need to identify every object in an image and produce a pixel-level mask for each object. High-quality methods can be expensive to run, while lightweight models often lose mask quality. This project explores FastInst as a practical balance: query-based segmentation with real-time inference characteristics and reproducible COCO-style training/evaluation commands.
+| Up to 40.5 mask AP | Up to 53.8 FPS on a V100 | From 30M parameters | Image, video, and webcam |
+| --- | --- | --- | --- |
 
-## What I Built
+## What this is for
 
-- A clean FastInst/Detectron2 project layout for COCO instance segmentation experiments.
-- Training and evaluation entry points through `train_net.py`.
-- Configurations for ResNet-50, ResNet-101, and ResNet-50d-DCN FastInst variants.
-- Dataset preparation docs and utilities for COCO, ADE20K, and panoptic/semantic segmentation assets.
-- Demo tooling for image, video, and webcam inference.
-- A COCO annotation sampling utility for quickly inspecting dataset records before running full experiments.
+Instance segmentation has to name every object and paint a mask for each one. The accurate models are often too slow to ship, and the fast ones drop mask quality. FastInst keeps both: a small set of instance-guided queries, a high-resolution mask head, and a Detectron2 training loop you can actually run.
 
-## Tech Stack
+## What you can do with it
 
-- Python
-- PyTorch
-- Detectron2
-- CUDA-enabled training/inference
-- OpenCV for visualization demos
-- COCO, ADE20K, and Cityscapes-style dataset formats
+- Train and evaluate from one entry point, `train_net.py`, on one GPU or many.
+- Swap backbones without rewriting the model: ResNet-50, ResNet-101, and ResNet-50d with deformable convolutions.
+- Run a pretrained checkpoint on a still image, a video, or a webcam.
+- Prepare COCO, ADE20K, panoptic, and semantic segmentation data in the layout Detectron2 expects.
+- Measure compute with `tools/analyze_model.py` before you commit to a training run.
+- Inspect COCO annotations in a few seconds with `tools/sample_coco_data.py`.
 
-## Architecture
+## How it works
+
+1. A backbone extracts image features.
+2. The pixel decoder builds a high-resolution map for masks.
+3. Instance activation-guided queries tell the transformer decoder where objects actually are, so the model stays fast.
+4. Each query returns a category, a box, and a mask.
+5. `train_net.py` owns the Detectron2 trainer, the matcher, the loss, and COCO evaluation.
 
 ```text
-.
-├── configs/                 # Model and dataset config files
-├── datasets/                # Dataset setup docs and conversion utilities
-├── demo/                    # Image/video/webcam inference demo
-├── fastinst/                # FastInst model, data mappers, evaluators, and config
-├── tools/                   # Analysis, conversion, evaluation, and dataset sampling scripts
-├── train_net.py             # Main Detectron2 training/evaluation entry point
-├── INSTALL.md               # Environment setup notes
-└── requirements.txt         # Python package dependencies beyond PyTorch/Detectron2
+configs/          model and dataset configs
+datasets/         COCO and ADE20K preparation
+demo/             image, video, and webcam inference
+fastinst/         model, data mappers, criterion, evaluators
+tools/            FLOPs, conversion, boundary AP, dataset sampling
+train_net.py      training and evaluation
 ```
 
-The training flow follows Detectron2 conventions: configs define the model, dataset mapper, solver, and evaluation behavior; `train_net.py` builds the trainer/evaluator; `fastinst/` contains model components such as the pixel decoder, transformer decoder, matcher, criterion, and inference logic.
+## Models
 
-## Quick Local Run
+COCO instance segmentation. Checkpoints load through `MODEL.WEIGHTS` with the matching config in this repo.
 
-Create an environment and install dependencies:
+| Model | Backbone | Input | AP | Params | FPS (V100) | Checkpoint |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| FastInst-D1 | R50 | 576 | 35.6 | 30M | 53.8 | [weights](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R50_ppm-fpn_x1_576_34.9.pth) |
+| FastInst-D3 | R50 | 640 | 38.6 | 34M | 35.5 | [weights](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R50_ppm-fpn_x3_640_37.9.pth) |
+| FastInst-D3 | R101 | 640 | 39.9 | 53M | 28.0 | [weights](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R101_ppm-fpn_x3_640_38.9.pth) |
+| FastInst-D1 | R50-d-DCN | 576 | 38.0 | 30M | 47.8 | [weights](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R50-vd-dcn_ppm-fpn_x1_576_37.4.pth) |
+| FastInst-D3 | R50-d-DCN | 640 | 40.5 | 35M | 32.5 | [weights](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R50-vd-dcn_ppm-fpn_x3_640_40.1.pth) |
 
-```bash
-conda create --name fastinst python=3.8 -y
-conda activate fastinst
-conda install pytorch==1.9.0 torchvision==0.10.0 cudatoolkit=11.1 -c pytorch -c nvidia
-pip install -U opencv-python
-pip install -r requirements.txt
-```
+The strongest accuracy setting is FastInst-D3 with ResNet-50d-DCN at 40.5 AP. The fastest setting is FastInst-D1 with ResNet-50 at 53.8 FPS and 35.6 AP.
 
-Install Detectron2 in the same environment:
-
-```bash
-git clone https://github.com/facebookresearch/detectron2.git
-cd detectron2
-pip install -e .
-cd ..
-```
-
-Clone this repository:
+## Run it
 
 ```bash
-git clone https://github.com/srirammadduri/fastinst-segmentation.git
+git clone https://github.com/smadduri9/fastinst-segmentation.git
 cd fastinst-segmentation
 ```
 
-Inspect a small slice of COCO annotations:
+Environment setup is in [INSTALL.md](INSTALL.md). After that:
 
 ```bash
-python tools/sample_coco_data.py --download
-```
+export DETECTRON2_DATASETS=/path/to/datasets
 
-Run a pretrained checkpoint on the demo script:
-
-```bash
 python demo/demo.py \
   --config-file configs/coco/instance-segmentation/fastinst_R50_ppm-fpn_x1_576.yaml \
   --input path/to/image.jpg \
   --output demo-output \
-  --opts MODEL.WEIGHTS path/to/checkpoint.pth
+  --opts MODEL.WEIGHTS path/to/fastinst_R50_ppm-fpn_x1_576_34.9.pth
 ```
 
-## Full Experiment Workflow
-
-Set the dataset root:
-
-```bash
-export DETECTRON2_DATASETS=/path/to/datasets
-```
-
-Prepare COCO in the expected Detectron2 layout:
-
-```text
-$DETECTRON2_DATASETS/
-└── coco/
-    ├── annotations/
-    │   ├── instances_train2017.json
-    │   └── instances_val2017.json
-    ├── train2017/
-    └── val2017/
-```
-
-Evaluate a pretrained FastInst checkpoint:
+Evaluate:
 
 ```bash
 python train_net.py \
   --eval-only \
   --num-gpus 1 \
   --config-file configs/coco/instance-segmentation/fastinst_R50_ppm-fpn_x1_576.yaml \
-  MODEL.WEIGHTS path/to/checkpoint.pth
+  MODEL.WEIGHTS path/to/fastinst_R50_ppm-fpn_x1_576_34.9.pth
 ```
 
-Train from a config:
+Train:
 
 ```bash
 python train_net.py \
@@ -126,41 +96,23 @@ python train_net.py \
   --config-file configs/coco/instance-segmentation/fastinst_R50_ppm-fpn_x1_576.yaml
 ```
 
-Scale to multi-GPU training by increasing `--num-gpus` and using the same config. Outputs are written to the `OUTPUT_DIR` specified in each config.
+COCO layout:
 
-Analyze model cost:
-
-```bash
-python tools/analyze_model.py \
-  --num-inputs 100 \
-  --tasks flop \
-  --config-file configs/coco/instance-segmentation/fastinst_R50_ppm-fpn_x1_576.yaml
+```text
+$DETECTRON2_DATASETS/coco/
+├── annotations/instances_train2017.json
+├── annotations/instances_val2017.json
+├── train2017/
+└── val2017/
 ```
 
-## Results
+## Stack
 
-No local training logs or custom benchmark artifacts are included in this repository. The table below records published FastInst COCO instance segmentation reference metrics so the expected performance envelope is clear and reproducible with the linked checkpoints.
+Python, PyTorch, Detectron2, CUDA, OpenCV, and COCO-format datasets.
 
-| Model | Backbone | Epochs | Input | AP val | AP | Params | GFlops | FPS V100 | Checkpoint |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| FastInst-D1 | R50 | 50 | 576 | 34.9 | 35.6 | 30M | 49.6 | 53.8 | [model](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R50_ppm-fpn_x1_576_34.9.pth) |
-| FastInst-D3 | R50 | 50 | 640 | 37.9 | 38.6 | 34M | 75.5 | 35.5 | [model](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R50_ppm-fpn_x3_640_37.9.pth) |
-| FastInst-D3 | R101 | 50 | 640 | 38.9 | 39.9 | 53M | 112.9 | 28.0 | [model](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R101_ppm-fpn_x3_640_38.9.pth) |
-| FastInst-D1 | R50-d-DCN | 50 | 576 | 37.4 | 38.0 | 30M | - | 47.8 | [model](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R50-vd-dcn_ppm-fpn_x1_576_37.4.pth) |
-| FastInst-D3 | R50-d-DCN | 50 | 640 | 40.1 | 40.5 | 35M | - | 32.5 | [model](https://github.com/junjiehe96/FastInst/releases/download/v0.1.0/fastinst_R50-vd-dcn_ppm-fpn_x3_640_40.1.pth) |
+## Citation
 
-For a lightweight reproducibility path without running full training, use:
-
-```bash
-python tools/sample_coco_data.py --download
-python train_net.py --eval-only --num-gpus 1 \
-  --config-file configs/coco/instance-segmentation/fastinst_R50_ppm-fpn_x1_576.yaml \
-  MODEL.WEIGHTS path/to/fastinst_R50_ppm-fpn_x1_576_34.9.pth
-```
-
-## Reference Material
-
-This repository does not include a separate report or paper folder. The FastInst paper remains the primary architectural reference:
+Architecture and reported COCO numbers follow [FastInst: A Simple Query-Based Model for Real-Time Instance Segmentation](https://arxiv.org/abs/2303.08594).
 
 ```bibtex
 @article{he2023fastinst,
@@ -171,6 +123,6 @@ This repository does not include a separate report or paper folder. The FastInst
 }
 ```
 
-## License and Attribution
+## License
 
-FastInst is released under the [MIT License](LICENSE). This repository keeps the original FastInst license, paper citation, and relevant source attributions. It also builds on the Detectron2, DETR, and Mask2Former ecosystems.
+[MIT](LICENSE). This project builds on FastInst, Detectron2, DETR, and Mask2Former.

@@ -36,7 +36,7 @@ pip install git+https://github.com/mcordts/cityscapesScripts.git
 Install this repository:
 
 ```bash
-git clone https://github.com/srirammadduri/fastinst-segmentation.git
+git clone https://github.com/smadduri9/fastinst-segmentation.git
 cd fastinst-segmentation
 pip install -r requirements.txt
 ```
